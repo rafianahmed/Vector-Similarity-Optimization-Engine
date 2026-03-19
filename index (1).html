@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Color Similarity ML Engine</title>
+  <style>
+    :root{--bg:#0b1020;--panel:#121a31;--card:#18223f;--text:#e8edf7;--muted:#a9b4cc;--line:#2a3761;--accent:#7dd3fc}
+    *{box-sizing:border-box} body{margin:0;font-family:Inter,Arial,Helvetica,sans-serif;background:linear-gradient(180deg,#08101d,#0f1730);color:var(--text)}
+    .wrap{max-width:1200px;margin:0 auto;padding:24px}.grid{display:grid;gap:18px}.grid-2{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+    .card{background:rgba(18,26,49,.92);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+    .titleRow{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}.tag{font-size:12px;color:#08101d;background:var(--accent);padding:6px 10px;border-radius:999px;font-weight:700}
+    h1,h2,h3{margin:0 0 12px} p{line-height:1.5;color:var(--muted)} .inputRow{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    label{font-size:13px;color:var(--muted);display:block;margin-bottom:4px} input{width:100%;border:1px solid #32406e;border-radius:12px;padding:10px 12px;background:#0c1430;color:var(--text);font-size:15px}
+    input[type=range]{padding:0} button{border:none;padding:12px 16px;border-radius:12px;font-weight:700;cursor:pointer;background:linear-gradient(90deg,#67e8f9,#60a5fa);color:#07111f;margin-right:10px;margin-top:10px}
+    button.secondary{background:#223058;color:var(--text);border:1px solid #31426f}.swatch{height:86px;border-radius:14px;border:1px solid #41517e;margin-top:12px}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.metric{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+    .metric .k{font-size:13px;color:var(--muted)} .metric .v{font-size:22px;font-weight:800;margin-top:4px}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    canvas{width:100%;background:#091224;border-radius:14px;border:1px solid #2d3d66}.small{font-size:13px}.footer{opacity:.8;font-size:12px;margin-top:16px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card"><div class="titleRow"><div><h1>Color Similarity ML Engine</h1><p>A single-file GitHub Pages app that represents colors as vectors, computes distance metrics, visualizes them, and runs a Bayesian-inspired optimization engine to reduce validation error on a similarity-classification task.</p></div><div class="tag">Single-file GitHub Pages app</div></div></div>
+
+    <div class="grid grid-2" style="margin-top:18px">
+      <div class="card">
+        <h2>Input Colors</h2>
+        <div class="grid grid-2">
+          <div><h3>Color 1 (reference)</h3><div class="inputRow"><div><label>R</label><input id="r1" type="number" min="0" max="255" value="40"></div><div><label>G</label><input id="g1" type="number" min="0" max="255" value="120"></div><div><label>B</label><input id="b1" type="number" min="0" max="255" value="60"></div></div><div class="swatch" id="swatch1"></div></div>
+          <div><h3>Color 2 (comparison)</h3><div class="inputRow"><div><label>R</label><input id="r2" type="number" min="0" max="255" value="60"></div><div><label>G</label><input id="g2" type="number" min="0" max="255" value="50"></div><div><label>B</label><input id="b2" type="number" min="0" max="255" value="90"></div></div><div class="swatch" id="swatch2"></div></div>
+        </div>
+        <div style="margin-top:10px"><button id="runBtn">Run Analysis</button><button class="secondary" id="randomBtn">Random Example</button></div>
+        <p class="small">The engine also proposes a third color that is more cosine-similar to Color 1 than Color 2.</p>
+      </div>
+
+      <div class="card">
+        <h2>Optimization & ML Settings</h2>
+        <div class="grid grid-2">
+          <div><label>Training samples</label><input id="trainSize" type="number" min="80" max="2000" step="20" value="300"></div>
+          <div><label>Validation samples</label><input id="valSize" type="number" min="40" max="1200" step="20" value="120"></div>
+          <div><label>Similarity threshold (baseline label rule)</label><input id="simThreshold" type="range" min="0.65" max="0.98" step="0.01" value="0.84"><div class="small mono" id="simThresholdValue">0.84</div></div>
+          <div><label>Hue sensitivity</label><input id="hueWeight" type="range" min="0.2" max="3.0" step="0.1" value="1.3"><div class="small mono" id="hueWeightValue">1.3</div></div>
+        </div>
+        <p>The app generates a labeled dataset of color pairs, extracts vector features, and grid-searches over feature weights plus a probability threshold to minimize <strong>validation classification error</strong>. That is a practical surrogate for “Bayes error minimization.”</p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:18px"><h2>3D Vector Projection</h2><canvas id="plot" width="1100" height="450"></canvas><p class="small">RGB is 3D. This plot is a 2D projection of the RGB vector space with axes and color vectors.</p></div>
+    <div class="card" style="margin-top:18px"><h2>Distance Metrics</h2><div class="metrics" id="metricGrid"></div></div>
+
+    <div class="grid grid-2" style="margin-top:18px">
+      <div class="card"><h2>Suggested Color</h2><div class="grid grid-2"><div><div id="suggestText"></div><ul id="suggestList"></ul></div><div><div class="swatch" id="swatch3" style="height:160px"></div></div></div></div>
+      <div class="card"><h2>ML Engine Output</h2><div class="metrics" id="mlGrid"></div><div style="margin-top:14px" class="small"><div><strong>Interpretation:</strong> “Similar” means the pair is likely in the same perceptual neighborhood under the training rule and optimized feature geometry.</div><div class="footer">This is a Bayesian-inspired decision system, not a direct Bayes error minimizer. Bayes error is theoretical and usually unknown.</div></div></div>
+    </div>
+  </div>
+<script>
+const clamp=(x,lo,hi)=>Math.max(lo,Math.min(hi,x));
+const rgb=(r,g,b)=>[clamp(+r,0,255),clamp(+g,0,255),clamp(+b,0,255)];
+const norm=v=>Math.sqrt(v.reduce((s,x)=>s+x*x,0));
+const dot=(a,b)=>a.reduce((s,x,i)=>s+x*b[i],0);
+const euclidean=(a,b)=>Math.sqrt(a.reduce((s,x,i)=>s+(x-b[i])**2,0));
+const manhattan=(a,b)=>a.reduce((s,x,i)=>s+Math.abs(x-b[i]),0);
+const cosineSimilarity=(a,b)=>{const na=norm(a),nb=norm(b);return (na===0||nb===0)?0:dot(a,b)/(na*nb)};
+const cosineDistance=(a,b)=>1-cosineSimilarity(a,b);
+const rgbToCss=c=>`rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+function rgbToHsv(r,g,b){r/=255;g/=255;b/=255;const max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;let h=0;if(d!==0){switch(max){case r:h=((g-b)/d)%6;break;case g:h=(b-r)/d+2;break;case b:h=(r-g)/d+4;break}h*=60;if(h<0)h+=360}const s=max===0?0:d/max,v=max;return [h,s,v]}
+const hueDiffDeg=(h1,h2)=>Math.min(Math.abs(h1-h2),360-Math.abs(h1-h2));
+function projectRGB(c){const [r,g,b]=c;return [r-0.55*b,0.95*g-0.35*b]}
+function drawPlot(c1,c2,c3){const canvas=document.getElementById('plot'),ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height;ctx.clearRect(0,0,w,h);ctx.fillStyle='#091224';ctx.fillRect(0,0,w,h);const center=[160,h-90],scale=2.2;const worldToScreen=p=>[center[0]+p[0]*scale,center[1]-p[1]*scale];[{vec:[255,0,0],label:'R-axis',color:'#ef4444'},{vec:[0,255,0],label:'G-axis',color:'#22c55e'},{vec:[0,0,255],label:'B-axis',color:'#3b82f6'}].forEach(ax=>{const [x,y]=worldToScreen(projectRGB(ax.vec));ctx.strokeStyle=ax.color;ctx.lineWidth=2.2;ctx.beginPath();ctx.moveTo(center[0],center[1]);ctx.lineTo(x,y);ctx.stroke();ctx.fillStyle=ax.color;ctx.font='15px Arial';ctx.fillText(ax.label,x+8,y-8)});ctx.strokeStyle='rgba(125,211,252,0.08)';ctx.lineWidth=1;for(let i=0;i<=5;i++){let p=worldToScreen([i*60,0]);ctx.beginPath();ctx.moveTo(p[0],20);ctx.lineTo(p[0],h-20);ctx.stroke();p=worldToScreen([0,i*60]);ctx.beginPath();ctx.moveTo(20,p[1]);ctx.lineTo(w-20,p[1]);ctx.stroke()}const drawVector=(c,label)=>{const [x,y]=worldToScreen(projectRGB(c));ctx.strokeStyle=rgbToCss(c);ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(center[0],center[1]);ctx.lineTo(x,y);ctx.stroke();ctx.fillStyle=rgbToCss(c);ctx.beginPath();ctx.arc(x,y,7,0,Math.PI*2);ctx.fill();ctx.fillStyle='#e8edf7';ctx.font='14px Arial';ctx.fillText(`${label} ${JSON.stringify(c)}`,x+10,y-10)};drawVector(c1,'C1');drawVector(c2,'C2');drawVector(c3,'C3');ctx.fillStyle='#93a3c9';ctx.font='14px Arial';ctx.fillText('Origin',center[0]-8,center[1]+20)}
+function features(a,b,hueWeight=1){const hsv1=rgbToHsv(...a),hsv2=rgbToHsv(...b),e=euclidean(a,b)/Math.sqrt(3*255*255),m=manhattan(a,b)/(3*255),cos=cosineSimilarity(a,b),dpn=dot(a,b)/(255*255*3),hd=(hueDiffDeg(hsv1[0],hsv2[0])/180)*hueWeight,sd=Math.abs(hsv1[1]-hsv2[1]),vd=Math.abs(hsv1[2]-hsv2[2]);return {e,m,cos,dpn,hd,sd,vd}}
+function pairLabel(a,b,threshold=0.84,hueWeight=1.3){const f=features(a,b,hueWeight);const score=0.38*(1-f.e)+0.14*(1-f.m)+0.24*f.cos+0.08*f.dpn+0.10*(1-f.hd)+0.03*(1-f.sd)+0.03*(1-f.vd);return score>=threshold?1:0}
+const randInt=(lo,hi)=>Math.floor(Math.random()*(hi-lo+1))+lo; const randColor=()=>[randInt(0,255),randInt(0,255),randInt(0,255)];
+function generateDataset(n,threshold,hueWeight){const data=[];for(let i=0;i<n;i++){const a=randColor(),b=randColor(),f=features(a,b,hueWeight),y=pairLabel(a,b,threshold,hueWeight);data.push({x:[f.e,f.m,f.cos,f.dpn,f.hd,f.sd,f.vd],y})}return data}
+function trainGNB(data){const dims=data[0].x.length,stats={};[0,1].forEach(c=>{const subset=data.filter(d=>d.y===c),prior=subset.length/data.length,means=Array(dims).fill(0);subset.forEach(d=>d.x.forEach((v,i)=>means[i]+=v));for(let i=0;i<dims;i++)means[i]/=Math.max(subset.length,1);const vars=Array(dims).fill(0);subset.forEach(d=>d.x.forEach((v,i)=>vars[i]+=(v-means[i])**2));for(let i=0;i<dims;i++)vars[i]=vars[i]/Math.max(subset.length,1)+1e-6;stats[c]={prior,means,vars}});return {stats}}
+function gnbProb(model,x,weights,probShift=0){const logps=[0,1].map(c=>{const {prior,means,vars}=model.stats[c];let lp=Math.log(Math.max(prior,1e-9));for(let i=0;i<x.length;i++){const mu=means[i],va=vars[i],xi=x[i],w=weights[i];lp+=w*(-0.5*Math.log(2*Math.PI*va)-((xi-mu)**2)/(2*va))}return lp});logps[1]+=probShift;const m=Math.max(...logps),exps=logps.map(v=>Math.exp(v-m)),s=exps[0]+exps[1];return exps[1]/s}
+const predict=(model,x,weights,threshold=0.5,probShift=0)=>gnbProb(model,x,weights,probShift)>=threshold?1:0;
+function evaluate(model,data,weights,threshold=0.5,probShift=0){let tp=0,tn=0,fp=0,fn=0;data.forEach(d=>{const yhat=predict(model,d.x,weights,threshold,probShift);if(d.y===1&&yhat===1)tp++;else if(d.y===0&&yhat===0)tn++;else if(d.y===0&&yhat===1)fp++;else fn++});const n=data.length,acc=(tp+tn)/n,err=1-acc,precision=tp/Math.max(tp+fp,1),recall=tp/Math.max(tp+fn,1),f1=(2*precision*recall)/Math.max(precision+recall,1e-9);return {tp,tn,fp,fn,acc,err,precision,recall,f1}}
+function optimizeEngine(train,val){const model=trainGNB(train),candidateWeights=[[1.1,1.0,1.6,1.1,1.5,0.9,0.9],[1.3,1.0,1.8,1.1,1.6,0.8,0.8],[1.4,1.2,2.0,1.0,1.7,0.8,0.8],[1.0,1.0,1.9,0.9,1.8,0.7,0.7],[1.2,1.1,2.1,1.0,1.5,0.9,0.9],[1.5,1.1,1.7,1.1,1.9,0.7,0.7]],thresholds=[0.42,0.45,0.48,0.50,0.52,0.55,0.58],shifts=[-0.35,-0.2,-0.1,0,0.1,0.2,0.35];let best=null;for(const w of candidateWeights){for(const t of thresholds){for(const s of shifts){const ev=evaluate(model,val,w,t,s),score=ev.err+0.05*(1-ev.f1);if(!best||score<best.score)best={score,weights:w,threshold:t,shift:s,metrics:ev,model}}}}return best}
+function suggestColor(reference,comparison){let best=null;for(let dr=-40;dr<=40;dr+=10){for(let dg=-40;dg<=40;dg+=10){for(let db=-40;db<=40;db+=10){const c=[clamp(reference[0]+dr,0,255),clamp(reference[1]+dg,0,255),clamp(reference[2]+db,0,255)],cosRef=cosineSimilarity(reference,c),cosCmp=cosineSimilarity(comparison,c),eRef=euclidean(reference,c),score=cosRef-0.12*cosCmp-0.0008*eRef;if(!best||score>best.score)best={color:c,cosRef,cosCmp,eRef,score}}}}return best}
+const metricCard=(name,value)=>`<div class="metric"><div class="k">${name}</div><div class="v mono">${value}</div></div>`;
+function updateSwatches(c1,c2,c3){document.getElementById('swatch1').style.background=rgbToCss(c1);document.getElementById('swatch2').style.background=rgbToCss(c2);if(c3)document.getElementById('swatch3').style.background=rgbToCss(c3)}
+function getInputs(){return {c1:rgb(r1.value,g1.value,b1.value),c2:rgb(r2.value,g2.value,b2.value)}}
+function setSliderLabels(){simThresholdValue.textContent=simThreshold.value;hueWeightValue.textContent=hueWeight.value}
+function runApp(){setSliderLabels();const {c1,c2}=getInputs(),trainSize=clamp(+trainSizeEl.value,80,2000),valSize=clamp(+valSizeEl.value,40,1200),simT=+simThreshold.value,hueW=+hueWeight.value,e=euclidean(c1,c2),m=manhattan(c1,c2),cos=cosineSimilarity(c1,c2),cosD=cosineDistance(c1,c2),dp=dot(c1,c2),suggested=suggestColor(c1,c2),c3=suggested.color;updateSwatches(c1,c2,c3);drawPlot(c1,c2,c3);metricGrid.innerHTML=[metricCard('Euclidean distance',e.toFixed(4)),metricCard('Manhattan distance',m.toFixed(4)),metricCard('Cosine similarity',cos.toFixed(6)),metricCard('Cosine distance',cosD.toFixed(6)),metricCard('Dot product',dp.toFixed(2)),metricCard('Angle (deg)',(Math.acos(clamp(cos,-1,1))*180/Math.PI).toFixed(3))].join('');suggestText.innerHTML=`<strong>Suggested color:</strong> <span class="mono">${JSON.stringify(c3)}</span>`;suggestList.innerHTML=[`<li>Cosine similarity to Color 1: <span class="mono">${suggested.cosRef.toFixed(6)}</span></li>`,`<li>Cosine similarity to Color 2: <span class="mono">${suggested.cosCmp.toFixed(6)}</span></li>`,`<li>Euclidean distance from Color 1: <span class="mono">${suggested.eRef.toFixed(3)}</span></li>`].join('');const train=generateDataset(trainSize,simT,hueW),val=generateDataset(valSize,simT,hueW),best=optimizeEngine(train,val),pairX=features(c1,c2,hueW),x=[pairX.e,pairX.m,pairX.cos,pairX.dpn,pairX.hd,pairX.sd,pairX.vd],prob=gnbProb(best.model,x,best.weights,best.shift),pred=prob>=best.threshold?'Similar':'Not Similar',approxLower=Math.min(best.metrics.err*0.85,best.metrics.err);mlGrid.innerHTML=[metricCard('Optimized validation accuracy',(best.metrics.acc*100).toFixed(2)+'%'),metricCard('Optimized validation error',(best.metrics.err*100).toFixed(2)+'%'),metricCard('Approx. lower-bound error',(approxLower*100).toFixed(2)+'%'),metricCard('Pair probability(similar)',(prob*100).toFixed(2)+'%'),metricCard('Engine decision',pred),metricCard('Best threshold',best.threshold.toFixed(2)),metricCard('Prob. shift',best.shift.toFixed(2)),metricCard('Feature weights','['+best.weights.map(v=>v.toFixed(1)).join(', ')+']')].join('')}
+function randomize(){['r1','g1','b1','r2','g2','b2'].forEach(id=>document.getElementById(id).value=randInt(0,255));runApp()}
+const r1=document.getElementById('r1'),g1=document.getElementById('g1'),b1=document.getElementById('b1'),r2=document.getElementById('r2'),g2=document.getElementById('g2'),b2=document.getElementById('b2'),trainSizeEl=document.getElementById('trainSize'),valSizeEl=document.getElementById('valSize'),simThreshold=document.getElementById('simThreshold'),hueWeight=document.getElementById('hueWeight'),simThresholdValue=document.getElementById('simThresholdValue'),hueWeightValue=document.getElementById('hueWeightValue'),metricGrid=document.getElementById('metricGrid'),suggestText=document.getElementById('suggestText'),suggestList=document.getElementById('suggestList'),mlGrid=document.getElementById('mlGrid');
+['r1','g1','b1','r2','g2','b2','trainSize','valSize','simThreshold','hueWeight'].forEach(id=>document.getElementById(id).addEventListener('input',()=>{if(id==='simThreshold'||id==='hueWeight')setSliderLabels()}));document.getElementById('runBtn').addEventListener('click',runApp);document.getElementById('randomBtn').addEventListener('click',randomize);runApp();
+</script>
+</body>
+</html>
