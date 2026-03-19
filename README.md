@@ -41,10 +41,4 @@ Compared with the previous version, this one adds:
 5. Select `main` and `/root`
 6. Save
 
-## Resume / LinkedIn wording
 
-Built a browser-based semantic image retrieval system that ranks the most similar uploaded images to a target image using deep embeddings, semantic label filtering, histogram features, and a Bayesian-inspired score optimization engine. Implemented client-side feature extraction with TensorFlow.js and MobileNet, along with calibration logic to reduce misranking caused by low-level texture similarity.
-
-## Notes
-
-This is Bayesian-inspired optimization, not direct Bayes error minimization. In practice, the app minimizes validation classification error using a probabilistic calibration layer.
