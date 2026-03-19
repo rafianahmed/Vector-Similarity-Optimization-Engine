@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Semantic Visual Similarity Search Engine</title>
+  <style>
+    :root{
+      --bg:#081120; --panel:#101b34; --card:#162445; --line:#29416e;
+      --text:#edf4ff; --muted:#a9b6d3; --accent:#7dd3fc; --good:#86efac; --warn:#fcd34d; --bad:#fda4af;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,Arial,Helvetica,sans-serif;background:linear-gradient(180deg,#07101c,#0d1830);color:var(--text)}
+    .wrap{max-width:1320px;margin:0 auto;padding:24px}
+    .card{background:rgba(16,27,52,.97);border:1px solid var(--line);border-radius:20px;padding:20px;box-shadow:0 14px 36px rgba(0,0,0,.28);margin-bottom:18px}
+    .top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
+    .pill{display:inline-block;padding:6px 10px;border-radius:999px;background:var(--accent);color:#06111f;font-size:12px;font-weight:800}
+    h1,h2,h3{margin:0 0 12px}
+    p{margin:0 0 10px;color:var(--muted);line-height:1.55}
+    .grid{display:grid;gap:18px}
+    .g2{grid-template-columns:1.15fr .85fr}
+    .g3{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+    .controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}
+    label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
+    input[type=file],input[type=number],input[type=range],select{
+      width:100%;padding:10px 12px;border-radius:12px;border:1px solid #395287;background:#0a1430;color:var(--text);font-size:14px
+    }
+    input[type=checkbox]{transform:scale(1.12)}
+    button{
+      border:none;border-radius:12px;padding:12px 16px;font-weight:800;cursor:pointer;
+      background:linear-gradient(90deg,#67e8f9,#60a5fa);color:#05111f;margin-right:10px;margin-top:10px
+    }
+    button.secondary{background:#223058;color:var(--text);border:1px solid #31426f}
+    button:disabled{opacity:.55;cursor:not-allowed}
+    .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px}
+    .thumb{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:10px}
+    .thumb img{width:100%;height:140px;object-fit:cover;border-radius:12px;border:1px solid #3f548b}
+    .thumb.target{outline:2px solid var(--accent)}
+    .meta{font-size:12px;color:var(--muted);margin-top:8px;word-break:break-word}
+    .rank{font-size:12px;font-weight:800;color:#04111e;background:var(--good);display:inline-block;padding:4px 8px;border-radius:999px;margin-top:8px}
+    .warnTag,.badTag,.okTag{display:inline-block;padding:3px 7px;border-radius:999px;font-size:11px;font-weight:800;margin-top:6px}
+    .warnTag{background:var(--warn);color:#2d2300}
+    .badTag{background:var(--bad);color:#2d0711}
+    .okTag{background:var(--good);color:#04200f}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:12px}
+    .metric{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+    .metric .k{font-size:12px;color:var(--muted)}
+    .metric .v{font-size:21px;font-weight:900;margin-top:4px;word-break:break-word}
+    .small{font-size:12px;color:var(--muted)}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    canvas{width:100%;background:#091224;border-radius:14px;border:1px solid #2d3d66}
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js"></script>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="top">
+        <div>
+          <h1>Semantic Visual Similarity Search Engine</h1>
+          <p>
+            Upload a target image and a gallery, then retrieve the closest images using deep embeddings,
+            semantic class filtering, color histograms, grayscale penalties, and a Bayesian-inspired score optimizer.
+          </p>
+        </div>
+        <span class="pill">Single-file GitHub Pages app</span>
+      </div>
+    </div>
+
+    <div class="grid g2">
+      <div class="card">
+        <h2>Upload & Run</h2>
+        <div class="controls">
+          <div>
+            <label>Upload images</label>
+            <input id="fileInput" type="file" accept="image/*" multiple />
+          </div>
+          <div>
+            <label>Top K results</label>
+            <input id="topK" type="number" min="1" max="20" value="5" />
+          </div>
+          <div>
+            <label>Pseudo-label threshold</label>
+            <input id="pseudoThreshold" type="range" min="0.45" max="0.95" step="0.01" value="0.70" />
+            <div id="pseudoThresholdValue" class="small mono">0.70</div>
+          </div>
+          <div>
+            <label>Optimization trials</label>
+            <input id="optTrials" type="number" min="20" max="400" step="10" value="120" />
+          </div>
+          <div>
+            <label>Semantic filtering strength</label>
+            <select id="semanticMode">
+              <option value="strict">Strict</option>
+              <option value="soft" selected>Soft</option>
+              <option value="off">Off</option>
+            </select>
+          </div>
+          <div>
+            <label>Class confidence gate</label>
+            <input id="classGate" type="range" min="0.20" max="0.95" step="0.01" value="0.40" />
+            <div id="classGateValue" class="small mono">0.40</div>
+          </div>
+        </div>
+        <div>
+          <button id="loadModelBtn">1. Load Model</button>
+          <button id="processBtn" disabled>2. Process Images</button>
+          <button id="searchBtn" disabled>3. Search + Optimize</button>
+          <button class="secondary" id="demoBtn">Load Demo Images</button>
+        </div>
+        <p class="small">
+          Fixes added: semantic label filtering, combined scoring, grayscale mismatch penalty, stronger optimizer.
+        </p>
+        <div id="status" class="small mono">Status: waiting</div>
+      </div>
+
+      <div class="card">
+        <h2>What changed</h2>
+        <p>
+          This version reduces wrong rankings by combining <strong>semantic labels</strong> from MobileNet,
+          <strong>deep embedding similarity</strong>, <strong>color histogram similarity</strong>, and a
+          <strong>grayscale mismatch penalty</strong>. It also uses a stronger Bayesian-inspired calibration layer
+          to optimize weights, threshold, and probability shift on a pseudo-labeled validation split.
+        </p>
+        <p>
+          That means a cat image is less likely to be outranked by a grayscale human image just because of texture overlap.
+        </p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Uploaded Images</h2>
+      <div id="gallery" class="gallery"></div>
+    </div>
+
+    <div class="grid g2">
+      <div class="card">
+        <h2>Top Similar Images</h2>
+        <div id="results" class="gallery"></div>
+      </div>
+      <div class="card">
+        <h2>Engine Metrics</h2>
+        <div id="metrics" class="metrics"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Final Score Distribution</h2>
+      <canvas id="scoreCanvas" width="1180" height="320"></canvas>
+      <p class="small">Final score blends calibrated probability with semantic and visual similarity signals.</p>
+    </div>
+  </div>
+
+<script>
+let model = null;
+let images = [];
+let targetId = null;
+
+const qs = id => document.getElementById(id);
+const statusEl = qs("status");
+function setStatus(msg){ statusEl.textContent = "Status: " + msg; }
+function clamp(x, lo, hi){ return Math.max(lo, Math.min(hi, x)); }
+function dot(a,b){ let s=0; for(let i=0;i<a.length;i++) s += a[i]*b[i]; return s; }
+function norm(a){ return Math.sqrt(Math.max(dot(a,a),1e-12)); }
+function cosine(a,b){ return dot(a,b)/(norm(a)*norm(b)); }
+function euclidean(a,b){ let s=0; for(let i=0;i<a.length;i++){ const d=a[i]-b[i]; s+=d*d; } return Math.sqrt(s); }
+function l1(a,b){ let s=0; for(let i=0;i<a.length;i++) s += Math.abs(a[i]-b[i]); return s; }
+function mean(arr){ return arr.reduce((a,b)=>a+b,0)/Math.max(arr.length,1); }
+function sd(arr){ const m=mean(arr); return Math.sqrt(mean(arr.map(x=>(x-m)**2))) + 1e-8; }
+
+function drawScoreChart(items){
+  const canvas = qs("scoreCanvas"), ctx = canvas.getContext("2d");
+  const w = canvas.width, h = canvas.height, pad = 40;
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle = "#091224"; ctx.fillRect(0,0,w,h);
+  ctx.strokeStyle = "rgba(255,255,255,.10)";
+  for(let i=0;i<5;i++){
+    const y = pad + i*(h-2*pad)/4;
+    ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(w-pad,y); ctx.stroke();
+  }
+  if(!items.length) return;
+  const vals = items.map(x=>x.finalScore);
+  const minV = Math.min(...vals), maxV = Math.max(...vals);
+  const step = (w-2*pad)/Math.max(items.length,1);
+  items.forEach((it,idx)=>{
+    const x = pad + idx*step + step*0.18;
+    const nv = (it.finalScore-minV)/Math.max(maxV-minV,1e-8);
+    const bh = nv*(h-2*pad);
+    ctx.fillStyle = idx===0 ? "#86efac" : "#7dd3fc";
+    ctx.fillRect(x, h-pad-bh, step*0.62, bh);
+    ctx.fillStyle = "#e6eeff"; ctx.font = "11px Arial";
+    ctx.fillText((it.name || "img").slice(0,14), x, h-pad+15);
+  });
+}
+
+function createImageBitmapFromFile(file){
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => resolve({img, url});
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+function imageToCanvas(img, size=224){
+  const c = document.createElement("canvas");
+  c.width = size; c.height = size;
+  const ctx = c.getContext("2d");
+  const scale = Math.min(size/img.width, size/img.height);
+  const w = img.width*scale, h = img.height*scale;
+  const x = (size-w)/2, y = (size-h)/2;
+  ctx.fillStyle = "black"; ctx.fillRect(0,0,size,size);
+  ctx.drawImage(img, x, y, w, h);
+  return c;
+}
+
+function colorHistogramFromCanvas(canvas, bins=8){
+  const ctx = canvas.getContext("2d");
+  const {data} = ctx.getImageData(0,0,canvas.width,canvas.height);
+  const hist = new Float32Array(bins*bins*bins);
+  let rs=0, gs=0, bs=0, count=0;
+  let lumSum=0, lumSq=0;
+  for(let i=0;i<data.length;i+=4){
+    const r=data[i], g=data[i+1], b=data[i+2];
+    const rb = Math.min(Math.floor(r/(256/bins)), bins-1);
+    const gb = Math.min(Math.floor(g/(256/bins)), bins-1);
+    const bb = Math.min(Math.floor(b/(256/bins)), bins-1);
+    hist[rb*bins*bins + gb*bins + bb] += 1;
+    rs += r; gs += g; bs += b; count += 1;
+    const lum = 0.299*r + 0.587*g + 0.114*b;
+    lumSum += lum; lumSq += lum*lum;
+  }
+  for(let i=0;i<hist.length;i++) hist[i] /= Math.max(count,1);
+  const avg = [rs/count, gs/count, bs/count];
+  const avgMean = (avg[0]+avg[1]+avg[2])/3;
+  const colorfulness = (Math.abs(avg[0]-avgMean)+Math.abs(avg[1]-avgMean)+Math.abs(avg[2]-avgMean))/255;
+  const lumVar = (lumSq/count) - (lumSum/count)**2;
+  const grayscaleScore = 1 / (1 + 8*colorfulness + 0.002*lumVar);
+  return {hist:Array.from(hist), avg, grayscaleScore, colorfulness};
+}
+
+async function embedAndClassify(canvas){
+  const embedTensor = tf.tidy(() => model.infer(canvas, true));
+  const embedding = Array.from(await embedTensor.data());
+  embedTensor.dispose();
+
+  const preds = await model.classify(canvas, 3);
+  return {embedding, preds};
+}
+
+function normalizeLabel(s){
+  return String(s || "").toLowerCase().replace(/[_-]/g," ").trim();
+}
+
+function labelTokens(str){
+  return new Set(normalizeLabel(str).split(/[\s,]+/).filter(Boolean));
+}
+
+function labelSimilarity(predsA, predsB){
+  if(!predsA?.length || !predsB?.length) return 0;
+  let best = 0;
+  for(const a of predsA){
+    const ta = labelTokens(a.className);
+    for(const b of predsB){
+      const tb = labelTokens(b.className);
+      const inter = [...ta].filter(x=>tb.has(x)).length;
+      const union = new Set([...ta, ...tb]).size || 1;
+      const j = inter / union;
+      const conf = Math.sqrt((a.probability||0) * (b.probability||0));
+      best = Math.max(best, 0.7*j + 0.3*conf);
+    }
+  }
+  return best;
+}
+
+function primaryLabel(preds){
+  return preds?.[0]?.className || "unknown";
+}
+
+function classGatePass(target, item, gate){
+  const ls = labelSimilarity(target.preds, item.preds);
+  const tProb = target.preds?.[0]?.probability || 0;
+  const iProb = item.preds?.[0]?.probability || 0;
+  return ls >= 0.20 || Math.min(tProb, iProb) < gate;
+}
+
+function pairSignals(target, item){
+  const embCos = (target.embedding && item.embedding) ? cosine(target.embedding, item.embedding) : 0;
+  const embE = (target.embedding && item.embedding) ? euclidean(target.embedding, item.embedding) / Math.sqrt(target.embedding.length) : 1;
+  const embL1 = (target.embedding && item.embedding) ? l1(target.embedding, item.embedding) / target.embedding.length : 1;
+
+  const histCos = (target.hist && item.hist) ? cosine(target.hist, item.hist) : 0;
+  const histE = (target.hist && item.hist) ? euclidean(target.hist, item.hist) / Math.sqrt(target.hist.length) : 1;
+  const avgDist = euclidean(target.avg || [0,0,0], item.avg || [0,0,0]) / (255*Math.sqrt(3));
+  const labelSim = labelSimilarity(target.preds, item.preds);
+
+  const grayscaleMismatch = Math.abs((target.grayscaleScore||0) - (item.grayscaleScore||0));
+  const colorMismatch = Math.abs((target.colorfulness||0) - (item.colorfulness||0));
+
+  return {
+    embCos,
+    embInvE: 1 - embE,
+    embInvL1: 1 - embL1,
+    histCos,
+    histInvE: 1 - histE,
+    avgInvDist: 1 - avgDist,
+    labelSim,
+    grayPenalty: grayscaleMismatch,
+    colorPenalty: colorMismatch
+  };
+}
+
+function scoreFromSignals(s){
+  return (
+    0.33*s.embCos +
+    0.10*s.embInvE +
+    0.07*s.embInvL1 +
+    0.18*s.histCos +
+    0.06*s.histInvE +
+    0.09*s.avgInvDist +
+    0.27*s.labelSim -
+    0.12*s.grayPenalty -
+    0.08*s.colorPenalty
+  );
+}
+
+function pseudoLabel(target, item, threshold, semanticMode, gate){
+  const s = pairSignals(target, item);
+  let score = scoreFromSignals(s);
+  if(semanticMode !== "off" && !classGatePass(target, item, gate)) score -= 0.18;
+  return score >= threshold ? 1 : 0;
+}
+
+function standardizeFeatures(rows){
+  if(!rows.length) return {rows:[], mu:[], sigma:[]};
+  const d = rows[0].length;
+  const mu = Array(d).fill(0), sigma = Array(d).fill(0);
+  for(let j=0;j<d;j++) mu[j] = mean(rows.map(r=>r[j]));
+  for(let j=0;j<d;j++) sigma[j] = sd(rows.map(r=>r[j]));
+  return {mu, sigma, rows: rows.map(r => r.map((v,j)=>(v-mu[j])/sigma[j]))};
+}
+
+function normalLogPdf(x, mu, varc){
+  return -0.5*Math.log(2*Math.PI*varc) - ((x-mu)*(x-mu))/(2*varc);
+}
+
+function trainGaussianNB(X, y){
+  const d = X[0].length;
+  const stats = {};
+  [0,1].forEach(c=>{
+    const subset = X.filter((_,i)=>y[i]===c);
+    const prior = subset.length / Math.max(X.length,1);
+    const mu = Array(d).fill(0), vari = Array(d).fill(0);
+    subset.forEach(r => r.forEach((v,j)=>mu[j]+=v));
+    for(let j=0;j<d;j++) mu[j] /= Math.max(subset.length,1);
+    subset.forEach(r => r.forEach((v,j)=>vari[j]+=(v-mu[j])**2));
+    for(let j=0;j<d;j++) vari[j] = vari[j]/Math.max(subset.length,1) + 1e-6;
+    stats[c] = {prior, mu, vari};
+  });
+  return stats;
+}
+
+function probNB(stats, x, weights, shift){
+  const logs = [0,1].map(c=>{
+    const st = stats[c];
+    let s = Math.log(Math.max(st.prior,1e-9));
+    for(let j=0;j<x.length;j++) s += weights[j]*normalLogPdf(x[j], st.mu[j], st.vari[j]);
+    return s;
+  });
+  logs[1] += shift;
+  const m = Math.max(logs[0], logs[1]);
+  const e0 = Math.exp(logs[0]-m), e1 = Math.exp(logs[1]-m);
+  return e1 / (e0 + e1);
+}
+
+function randomBetween(lo, hi){ return lo + Math.random()*(hi-lo); }
+
+function bayesInspiredOptimize(X, y, trials=120){
+  const n = X.length;
+  const idx = [...Array(n).keys()];
+  for(let i=n-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [idx[i], idx[j]] = [idx[j], idx[i]];
+  }
+  const cut = Math.max(2, Math.floor(0.7*n));
+  const tr = idx.slice(0,cut), va = idx.slice(cut);
+  const Xtr = tr.map(i=>X[i]), ytr = tr.map(i=>y[i]);
+  const Xva = va.map(i=>X[i]), yva = va.map(i=>y[i]);
+
+  const scaler = standardizeFeatures(Xtr);
+  const XtrZ = scaler.rows;
+  const XvaZ = Xva.map(r => r.map((v,j)=>(v-scaler.mu[j])/scaler.sigma[j]));
+  const stats = trainGaussianNB(XtrZ, ytr);
+
+  let best = null;
+  for(let t=0;t<trials;t++){
+    const weights = [
+      randomBetween(0.8,2.4), randomBetween(0.3,1.6), randomBetween(0.3,1.6),
+      randomBetween(0.5,2.0), randomBetween(0.2,1.3), randomBetween(0.2,1.2),
+      randomBetween(0.8,2.8), randomBetween(0.2,1.5), randomBetween(0.2,1.5)
+    ];
+    const threshold = randomBetween(0.28, 0.72);
+    const shift = randomBetween(-0.8, 0.8);
+
+    let tp=0, tn=0, fp=0, fn=0;
+    for(let i=0;i<XvaZ.length;i++){
+      const p = probNB(stats, XvaZ[i], weights, shift);
+      const pred = p >= threshold ? 1 : 0;
+      if(pred===1 && yva[i]===1) tp++;
+      else if(pred===0 && yva[i]===0) tn++;
+      else if(pred===1 && yva[i]===0) fp++;
+      else fn++;
+    }
+    const acc = (tp+tn)/Math.max(XvaZ.length,1);
+    const prec = tp/Math.max(tp+fp,1);
+    const rec = tp/Math.max(tp+fn,1);
+    const f1 = (2*prec*rec)/Math.max(prec+rec,1e-9);
+    const err = 1-acc;
+    const score = err + 0.03*(1-f1) + 0.01*Math.abs(prec-rec);
+    if(!best || score < best.score){
+      best = {score, acc, err, f1, threshold, shift, weights, scaler, stats};
+    }
+  }
+  return best;
+}
+
+function resultTag(r){
+  if(r.semanticPass) return `<span class="okTag">Semantic pass</span>`;
+  if(r.semanticMode === "strict") return `<span class="badTag">Semantic filtered</span>`;
+  return `<span class="warnTag">Semantic penalty</span>`;
+}
+
+function renderGallery(){
+  const gallery = qs("gallery");
+  gallery.innerHTML = "";
+  images.forEach(img => {
+    const div = document.createElement("div");
+    div.className = "thumb" + (img.id===targetId ? " target" : "");
+    div.innerHTML = `
+      <img src="${img.src}" alt="${img.name}">
+      <div class="meta">
+        <strong>${img.name}</strong><br>
+        ${img.width}×${img.height}<br>
+        Label: ${primaryLabel(img.preds)}
+      </div>
+      <label class="small" style="display:flex;align-items:center;gap:8px;margin-top:8px">
+        <input type="radio" name="targetPick" ${img.id===targetId?"checked":""}> Set as target
+      </label>
+    `;
+    div.querySelector("input").addEventListener("change", ()=>{
+      targetId = img.id;
+      renderGallery();
+    });
+    gallery.appendChild(div);
+  });
+}
+
+function renderMetrics(obj){
+  const metrics = qs("metrics");
+  metrics.innerHTML = Object.entries(obj).map(([k,v]) => `
+    <div class="metric">
+      <div class="k">${k}</div>
+      <div class="v mono">${v}</div>
+    </div>
+  `).join("");
+}
+
+function renderResults(items){
+  const results = qs("results");
+  results.innerHTML = "";
+  items.forEach((it, idx)=>{
+    const div = document.createElement("div");
+    div.className = "thumb";
+    div.innerHTML = `
+      <img src="${it.src}" alt="${it.name}">
+      <div class="rank">Rank #${idx+1}</div>
+      <div>${resultTag(it)}</div>
+      <div class="meta">
+        <strong>${it.name}</strong><br>
+        Label: ${it.label}<br>
+        Final score: <span class="mono">${it.finalScore.toFixed(4)}</span><br>
+        Probability(similar): <span class="mono">${(100*it.prob).toFixed(2)}%</span><br>
+        Embedding cosine: <span class="mono">${it.embCos.toFixed(4)}</span><br>
+        Label similarity: <span class="mono">${it.labelSim.toFixed(4)}</span>
+      </div>
+    `;
+    results.appendChild(div);
+  });
+  drawScoreChart(items);
+}
+
+async function loadModel(){
+  setStatus("loading MobileNet...");
+  model = await mobilenet.load({version:2, alpha:1.0});
+  qs("processBtn").disabled = false;
+  setStatus("model loaded");
+}
+
+async function processFiles(files){
+  if(!files.length){ setStatus("no images selected"); return; }
+  if(!model){ setStatus("load model first"); return; }
+
+  images = [];
+  setStatus("processing images and extracting embeddings...");
+  for(let i=0;i<files.length;i++){
+    const file = files[i];
+    const {img, url} = await createImageBitmapFromFile(file);
+    const canvas = imageToCanvas(img, 224);
+    const ch = colorHistogramFromCanvas(canvas, 8);
+    const ec = await embedAndClassify(canvas);
+    images.push({
+      id: "img_" + i + "_" + Date.now(),
+      name: file.name,
+      src: url,
+      width: img.width,
+      height: img.height,
+      embedding: ec.embedding,
+      preds: ec.preds,
+      hist: ch.hist,
+      avg: ch.avg,
+      grayscaleScore: ch.grayscaleScore,
+      colorfulness: ch.colorfulness
+    });
+  }
+  targetId = images.length ? images[0].id : null;
+  renderGallery();
+  qs("searchBtn").disabled = images.length < 2;
+  setStatus("images processed");
+}
+
+function runSearch(){
+  if(images.length < 2){ setStatus("need at least 2 images"); return; }
+  const target = images.find(x => x.id===targetId) || images[0];
+  const others = images.filter(x => x.id !== target.id);
+
+  const pseudoThreshold = +qs("pseudoThreshold").value;
+  const optTrials = +qs("optTrials").value;
+  const semanticMode = qs("semanticMode").value;
+  const gate = +qs("classGate").value;
+
+  const signals = others.map(it => pairSignals(target, it));
+  const X = signals.map(s => [
+    s.embCos, s.embInvE, s.embInvL1, s.histCos, s.histInvE, s.avgInvDist,
+    s.labelSim, s.grayPenalty, s.colorPenalty
+  ]);
+  const y = others.map(it => pseudoLabel(target, it, pseudoThreshold, semanticMode, gate));
+
+  const pos = y.filter(v=>v===1).length, neg = y.filter(v=>v===0).length;
+  if(pos===0 || neg===0){
+    setStatus("set too uniform for optimizer; using improved semantic fallback");
+    const ranked = others.map((it, i) => {
+      const s = signals[i];
+      const semanticPass = classGatePass(target, it, gate);
+      let finalScore = scoreFromSignals(s);
+      if(semanticMode === "strict" && !semanticPass) finalScore -= 0.5;
+      else if(semanticMode === "soft" && !semanticPass) finalScore -= 0.18;
+      return {
+        ...it,
+        semanticPass,
+        semanticMode,
+        label: primaryLabel(it.preds),
+        prob: clamp(finalScore, 0.01, 0.99),
+        finalScore,
+        embCos: s.embCos,
+        labelSim: s.labelSim
+      };
+    }).sort((a,b)=>b.finalScore-a.finalScore);
+
+    const topK = clamp(+qs("topK").value, 1, ranked.length);
+    renderResults(ranked.slice(0, topK));
+    renderMetrics({
+      "Target image": target.name,
+      "Target label": primaryLabel(target.preds),
+      "Uploaded images": images.length.toString(),
+      "Calibration": "semantic fallback",
+      "Top result": ranked[0]?.name || "n/a",
+      "Top label": ranked[0] ? primaryLabel(ranked[0].preds) : "n/a"
+    });
+    return;
+  }
+
+  const best = bayesInspiredOptimize(X, y, optTrials);
+  const Xz = X.map(r => r.map((v,j)=>(v-best.scaler.mu[j])/best.scaler.sigma[j]));
+
+  const ranked = others.map((it, i) => {
+    const s = signals[i];
+    const p = probNB(best.stats, Xz[i], best.weights, best.shift);
+    const semanticPass = classGatePass(target, it, gate);
+
+    let rawScore =
+      0.35*s.embCos + 0.10*s.embInvE + 0.06*s.embInvL1 +
+      0.14*s.histCos + 0.05*s.histInvE + 0.06*s.avgInvDist +
+      0.30*s.labelSim - 0.11*s.grayPenalty - 0.07*s.colorPenalty;
+
+    if(semanticMode === "strict" && !semanticPass) rawScore -= 0.50;
+    else if(semanticMode === "soft" && !semanticPass) rawScore -= 0.18;
+
+    const finalScore = 0.65*p + 0.35*rawScore;
+    return {
+      ...it,
+      semanticPass,
+      semanticMode,
+      label: primaryLabel(it.preds),
+      prob: p,
+      finalScore,
+      embCos: s.embCos,
+      labelSim: s.labelSim
+    };
+  }).sort((a,b)=>b.finalScore-a.finalScore);
+
+  const topK = clamp(+qs("topK").value, 1, ranked.length);
+  renderResults(ranked.slice(0, topK));
+  renderMetrics({
+    "Target image": target.name,
+    "Target label": primaryLabel(target.preds),
+    "Uploaded images": images.length.toString(),
+    "Positive pseudo-labels": pos.toString(),
+    "Negative pseudo-labels": neg.toString(),
+    "Validation accuracy": (100*best.acc).toFixed(2) + "%",
+    "Validation error": (100*best.err).toFixed(2) + "%",
+    "F1 score": best.f1.toFixed(4),
+    "Best threshold": best.threshold.toFixed(4),
+    "Best shift": best.shift.toFixed(4),
+    "Top result": ranked[0]?.name || "n/a",
+    "Top label": ranked[0] ? primaryLabel(ranked[0].preds) : "n/a"
+  });
+  setStatus("search and optimization completed");
+}
+
+async function loadDemo(){
+  function makeCanvas(label, painter){
+    const c = document.createElement("canvas");
+    c.width = 300; c.height = 220;
+    const ctx = c.getContext("2d");
+    painter(ctx, c.width, c.height);
+    return new Promise(resolve => c.toBlob(blob => resolve(new File([blob], label + ".png", {type:"image/png"}))));
+  }
+  const demos = [];
+  demos.push(await makeCanvas("cat_texture_1",(ctx,w,h)=>{
+    ctx.fillStyle="#8e8268"; ctx.fillRect(0,0,w,h);
+    for(let i=0;i<180;i++){ ctx.fillStyle=i%2?"#6e634f":"#b4a892"; ctx.fillRect((i*17)%w,(i*31)%h,18,8); }
+  }));
+  demos.push(await makeCanvas("cat_texture_2",(ctx,w,h)=>{
+    ctx.fillStyle="#7f745f"; ctx.fillRect(0,0,w,h);
+    for(let i=0;i<200;i++){ ctx.fillStyle=i%3?"#c0b29b":"#685d49"; ctx.fillRect((i*13)%w,(i*19)%h,14,10); }
+  }));
+  demos.push(await makeCanvas("human_color",(ctx,w,h)=>{
+    ctx.fillStyle="#d7e7ff"; ctx.fillRect(0,0,w,h); ctx.fillStyle="#0f172a"; ctx.fillRect(120,60,50,120);
+    ctx.fillStyle="#f0c8a0"; ctx.beginPath(); ctx.arc(145,50,22,0,Math.PI*2); ctx.fill();
+  }));
+  demos.push(await makeCanvas("human_grayscale",(ctx,w,h)=>{
+    ctx.fillStyle="#2a2a2a"; ctx.fillRect(0,0,w,h); ctx.fillStyle="#8a8a8a"; ctx.fillRect(125,70,50,115);
+    ctx.fillStyle="#b5b5b5"; ctx.beginPath(); ctx.arc(150,50,24,0,Math.PI*2); ctx.fill();
+  }));
+  demos.push(await makeCanvas("blue_landscape",(ctx,w,h)=>{
+    ctx.fillStyle="#7cc2ff"; ctx.fillRect(0,0,w,100); ctx.fillStyle="#2d6cdf"; ctx.fillRect(0,100,w,120);
+  }));
+  await processFiles(demos);
+}
+
+qs("pseudoThreshold").addEventListener("input", e => qs("pseudoThresholdValue").textContent = e.target.value);
+qs("classGate").addEventListener("input", e => qs("classGateValue").textContent = e.target.value);
+qs("loadModelBtn").addEventListener("click", loadModel);
+qs("processBtn").addEventListener("click", async () => {
+  const files = Array.from(qs("fileInput").files || []);
+  await processFiles(files);
+});
+qs("searchBtn").addEventListener("click", runSearch);
+qs("demoBtn").addEventListener("click", loadDemo);
+setStatus("ready");
+</script>
+</body>
+</html>
