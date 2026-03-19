@@ -1,4 +1,11 @@
+
 # Visual Similarity Search Engine
+
+Built a Visual Similarity Search Engine that identifies the most similar images to a target image using deep learning and vector-based similarity. The system extracts feature embeddings using TensorFlow.js (MobileNet), computes similarity through cosine distance and other metrics, and ranks images based on learned relevance.
+
+To enhance performance, I implemented a Bayesian-inspired optimization engine using Gaussian Naive Bayes and randomized hyperparameter search to minimize validation classification error and calibrate similarity scoring. The application runs fully in the browser and is deployed as a single-file GitHub Pages project.
+
+This project demonstrates practical applications of feature embeddings, similarity learning, probabilistic modeling, and optimization in real-world AI systems such as visual search and recommendation engines.
 
 A single-file GitHub Pages app that lets you:
 
