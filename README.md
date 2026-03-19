@@ -30,15 +30,4 @@ Compared with the previous version, this one adds:
    - Randomized Bayesian-inspired calibration over feature weights, threshold, and probability shift
    - Minimizes validation classification error on a pseudo-labeled split
 
-## Deploy on GitHub Pages
-
-1. Create a GitHub repository
-2. Upload:
-   - `index.html`
-   - `.nojekyll`
-3. Open **Settings → Pages**
-4. Choose **Deploy from a branch**
-5. Select `main` and `/root`
-6. Save
-
 
